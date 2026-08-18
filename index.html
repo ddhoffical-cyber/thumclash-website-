@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThumbClash — Thumbnail A/B Tester</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Archivo+Black&family=JetBrains+Mono:wght@400;600&display=swap');
+:root {
+--bg: #14141c;
+--surface: #1c1c27;
+--surface-2: #23232f;
+--border: #33333f;
+--text: #f4f4f6;
+--text-muted: #9494a8;
+--color-a: #ff5470;
+--color-b: #22d3ee;
+--color-c: #a78bfa;
+--gold: #ffc857;
+--gold-glow: rgba(255, 200, 87, 0.35);
+}
+[data-theme="light"] {
+--bg: #f5f5f8;
+--surface: #ffffff;
+--surface-2: #eeeef3;
+--border: #dcdce3;
+--text: #17171f;
+--text-muted: #63636f;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+background: var(--bg);
+color: var(--text);
+font-family: 'Space Grotesk', sans-serif;
+min-height: 100vh;
+transition: background 0.3s, color 0.3s;
+overflow-x: hidden;
+}
+.noise-bg {
+position: fixed; inset: 0; pointer-events: none; opacity: 0.03;
+background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23n)'/%3E%3C/svg%3E");
+z-index: 0;
+}
+header {
+display: flex; align-items: center; justify-content: space-between;
+padding: 16px 24px; border-bottom: 1px solid var(--border);
+position: sticky; top: 0; background: var(--bg); z-index: 10;
+gap: 12px; flex-wrap: wrap;
+}
+.logo-wrap { display: flex; align-items: center; gap: 10px; }
+.logo-text { font-family: 'Archivo Black', sans-serif; font-size: 1.15rem; letter-spacing: -0.02em; }
+.logo-text span { color: var(--color-a); }
+.header-controls { display: flex; align-items: center; gap: 14px; }
+.palette-picker { display: flex; align-items: center; gap: 6px; }
+.palette-swatch {
+width: 26px; height: 26px; border-radius: 50%;
+border: 2px solid var(--border);
+cursor: pointer;
+padding: 0;
+background: conic-gradient(var(--sw-a) 0deg 120deg, var(--sw-b) 120deg 240deg, var(--sw-c) 240deg 360deg);
+transition: transform 0.15s, border-color 0.15s;
+}
+.palette-swatch:hover { transform: scale(1.12); }
+.palette-swatch.active { border-color: var(--text); }
+.palette-swatch:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.theme-toggle {
+background: var(--surface); border: 1px solid var(--border); color: var(--text);
+width: 38px; height: 38px; border-radius: 50%; cursor: pointer;
+display: flex; align-items: center; justify-content: center;
+transition: transform 0.2s, border-color 0.2s;
+flex-shrink: 0;
+}
+.theme-toggle:hover { border-color: var(--color-a); transform: scale(1.05); }
+.theme-toggle:focus-visible { outline: 2px solid var(--color-a); outline-offset: 2px; }
+.free-badge {
+text-align: center; padding: 8px 20px; background: var(--surface-2);
+border-bottom: 1px solid var(--border); font-size: 0.75rem; color: var(--text-muted);
+font-family: 'JetBrains Mono', monospace;
+}
+.free-badge b { color: #3ecf6c; }
+main { max-width: 960px; margin: 0 auto; padding: 40px 20px 80px; position: relative; z-index: 1; }
+.hero { text-align: center; margin-bottom: 40px; }
+.hero h1 { font-family: 'Archivo Black', sans-serif; font-size: clamp(1.8rem, 6vw, 3rem); line-height: 1.05; letter-spacing: -0.02em; margin-bottom: 12px; }
+.hero h1 .vs-accent { background: linear-gradient(90deg, var(--color-a), var(--color-b)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero p { color: var(--text-muted); font-size: 1rem; max-width: 480px; margin: 0 auto; }
+.upload-zone { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+@media (max-width: 700px) { .upload-zone { grid-template-columns: 1fr; } }
+.slot {
+background: var(--surface); border: 2px dashed var(--border); border-radius: 14px;
+aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
+flex-direction: column; gap: 8px; cursor: pointer; position: relative; overflow: hidden;
+transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.slot:hover { border-color: var(--color-a); }
+.slot:focus-visible { outline: 2px solid var(--color-a); outline-offset: 2px; }
+.slot.filled { border-style: solid; }
+.slot.slot-a.filled { border-color: var(--color-a); }
+.slot.slot-b.filled { border-color: var(--color-b); }
+.slot.slot-c.filled { border-color: var(--color-c); }
+.slot.drag-over { background: var(--surface-2); box-shadow: inset 0 0 0 2px var(--gold); }
+.slot img { width: 100%; height: 100%; object-fit: cover; }
+.slot-label {
+position: absolute; top: 8px; left: 8px;
+font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 600;
+padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.6); color: white; z-index: 2;
+}
+.slot-a .slot-label { background: var(--color-a); color: #1a0a0e; }
+.slot-b .slot-label { background: var(--color-b); color: #06232a; }
+.slot-c .slot-label { background: var(--color-c); color: #1e1533; }
+.slot-optional-tag {
+position: absolute; top: 8px; right: 8px;
+font-family: 'JetBrains Mono', monospace; font-size: 0.62rem;
+padding: 2px 7px; border-radius: 6px; background: var(--surface-2); color: var(--text-muted);
+border: 1px solid var(--border); z-index: 2;
+}
+.slot.filled .slot-optional-tag { display: none; }
+.slot-empty-icon { color: var(--text-muted); font-size: 1.8rem; }
+.slot-empty-text { color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 0 10px; }
+.remove-btn {
+position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); color: white;
+border: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; z-index: 2;
+font-size: 0.9rem; line-height: 1;
+}
+input[type="file"] {
+position: absolute;
+width: 1px; height: 1px;
+padding: 0; margin: -1px;
+overflow: hidden;
+clip: rect(0,0,0,0);
+white-space: nowrap;
+border: 0;
+opacity: 0;
+}
+.analyze-btn {
+width: 100%; padding: 16px; background: var(--color-a); color: #1a0a0e; border: none;
+border-radius: 12px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1rem;
+cursor: pointer; transition: transform 0.15s, filter 0.2s, opacity 0.2s; margin-bottom: 8px;
+}
+.analyze-btn:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); }
+.analyze-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.analyze-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.hint { text-align: center; color: var(--text-muted); font-size: 0.8rem; margin-bottom: 20px; }
+.error-box { background: var(--surface); border: 1px solid var(--color-a); color: var(--color-a); padding: 14px 16px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; }
+.loading { text-align: center; padding: 40px 0; color: var(--text-muted); }
+.spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--color-a); border-radius: 50%; margin: 0 auto 16px; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.results { margin-top: 32px; animation: fadeIn 0.5s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+#reportCapture { padding: 4px; }
+.versus-row { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 28px; }
+.versus-card { flex: 1; text-align: center; min-width: 0; }
+.versus-thumb { border-radius: 12px; overflow: hidden; aspect-ratio: 16/9; margin-bottom: 10px; position: relative; border: 3px solid var(--border); transition: border-color 0.3s, box-shadow 0.3s; }
+.versus-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.versus-thumb.winner { border-color: var(--gold); box-shadow: 0 0 24px var(--gold-glow); }
+.crown { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 1.6rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4)); }
+.versus-score { font-family: 'Archivo Black', sans-serif; font-size: 1.6rem; }
+.card-a .versus-score { color: var(--color-a); }
+.card-b .versus-score { color: var(--color-b); }
+.card-c .versus-score { color: var(--color-c); }
+.versus-divider { font-family: 'Archivo Black', sans-serif; font-size: 1.1rem; color: var(--text-muted); flex-shrink: 0; }
+.metrics-section { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+.metrics-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 16px; font-family: 'JetBrains Mono', monospace; }
+.metric-row { margin-bottom: 14px; }
+.metric-row:last-child { margin-bottom: 0; }
+.metric-label { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px; flex-wrap: wrap; gap: 4px; }
+.metric-scores { display: flex; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
+.metric-bars { display: flex; gap: 6px; }
+.metric-bar-track { flex: 1; height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.metric-bar-fill { height: 100%; border-radius: 4px; transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1); width: 0%; }
+.fill-a { background: var(--color-a); }
+.fill-b { background: var(--color-b); }
+.fill-c { background: var(--color-c); }
+.verdict-box { background: var(--surface); border: 1px solid var(--gold); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+.verdict-title { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--gold); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+.verdict-text { font-size: 0.95rem; line-height: 1.6; color: var(--text); }
+.suggestions { display: grid; gap: 10px; margin-bottom: 16px; }
+.suggestion-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--color-a); border-radius: 8px; padding: 14px 16px; font-size: 0.9rem; line-height: 1.5; }
+.suggestion-card.b { border-left-color: var(--color-b); }
+.suggestion-card.c { border-left-color: var(--color-c); }
+.suggestion-card b { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
+.action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+@media (max-width: 480px) { .action-row { grid-template-columns: 1fr; } }
+.export-btn, .reset-btn {
+width: 100%; padding: 14px; border-radius: 12px;
+font-family: 'Space Grotesk', sans-serif; font-weight: 500; cursor: pointer;
+transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.export-btn { background: var(--surface-2); color: var(--text); border: 1px solid var(--gold); }
+.export-btn:hover:not(:disabled) { background: var(--gold); color: #1a0a0e; }
+.export-btn:disabled { opacity: 0.6; cursor: wait; }
+.reset-btn { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+.reset-btn:hover { border-color: var(--text-muted); color: var(--text); }
+.report-footer { text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); padding-top: 10px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body data-theme="dark">
+<div class="noise-bg"></div>
+<header>
+<div class="logo-wrap">
+<svg width="34" height="34" viewBox="0 0 240 240">
+<rect x="0" y="0" width="240" height="240" rx="28" fill="var(--surface-2)"/>
+<polygon points="34,48 150,120 34,192" fill="var(--color-a)"/>
+<polygon points="206,48 90,120 206,192" fill="var(--color-b)"/>
+<rect x="118" y="34" width="4" height="172" fill="var(--gold)"/>
+</svg>
+<div class="logo-text">Thumb<span>Clash</span></div>
+</div>
+<div class="header-controls">
+<div class="palette-picker" id="palettePicker" role="group" aria-label="Choose color palette"></div>
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">🌙</button>
+</div>
+</header>
+<div class="free-badge">100% free · runs fully in your browser · <b>no API key, no internet needed</b></div>
+<main>
+<div class="hero">
+<h1>Which thumbnail <span class="vs-accent">wins</span> the click?</h1>
+<p>Upload two or three thumbnails. Get an instant, honest breakdown before you upload for real.</p>
+</div>
+<div class="upload-zone">
+<div class="slot slot-a" id="slotA" tabindex="0" role="button" aria-label="Add thumbnail A">
+<input type="file" id="inputA" accept="image/*">
+<span class="slot-label">A</span>
+<span class="slot-empty-icon">📷</span>
+<span class="slot-empty-text">Add or drop thumbnail A</span>
+</div>
+<div class="slot slot-b" id="slotB" tabindex="0" role="button" aria-label="Add thumbnail B">
+<input type="file" id="inputB" accept="image/*">
+<span class="slot-label">B</span>
+<span class="slot-empty-icon">📷</span>
+<span class="slot-empty-text">Add or drop thumbnail B</span>
+</div>
+<div class="slot slot-c" id="slotC" tabindex="0" role="button" aria-label="Add thumbnail C, optional">
+<input type="file" id="inputC" accept="image/*">
+<span class="slot-label">C</span>
+<span class="slot-optional-tag">optional</span>
+<span class="slot-empty-icon">📷</span>
+<span class="slot-empty-text">Add or drop thumbnail C</span>
+</div>
+</div>
+<button class="analyze-btn" id="analyzeBtn" disabled>Analyze matchup</button>
+<div class="hint">Works best with final export-size thumbnails (1280×720) · JPG/PNG under 8MB</div>
+<div id="errorBox"></div>
+<div id="loadingBox"></div>
+<div id="resultsBox"></div>
+</main>
+<script>
+const PALETTES = [
+{ name: 'Clash',  a: '#ff5470', b: '#22d3ee', c: '#a78bfa' },
+{ name: 'Sunset', a: '#ff8a3d', b: '#ff5db1', c: '#8b5cf6' },
+{ name: 'Neon',   a: '#a3ff12', b: '#00e5ff', c: '#ff2fd0' },
+{ name: 'Ocean',  a: '#14b8a6', b: '#3b82f6', c: '#6366f1' }
+];
+const MAX_FILE_MB = 8;
+const state = { imgA: null, imgB: null, imgC: null, theme: 'dark', lastResult: null, palette: 0 };
+const palettePicker = document.getElementById('palettePicker');
+PALETTES.forEach((p, i) => {
+const btn = document.createElement('button');
+btn.type = 'button';
+btn.className = 'palette-swatch' + (i === 0 ? ' active' : '');
+btn.style.setProperty('--sw-a', p.a);
+btn.style.setProperty('--sw-b', p.b);
+btn.style.setProperty('--sw-c', p.c);
+btn.setAttribute('aria-label', p.name + ' palette');
+btn.title = p.name;
+btn.addEventListener('click', () => applyPalette(i));
+palettePicker.appendChild(btn);
+});
+function applyPalette(i) {
+state.palette = i;
+const p = PALETTES[i];
+document.documentElement.style.setProperty('--color-a', p.a);
+document.documentElement.style.setProperty('--color-b', p.b);
+document.documentElement.style.setProperty('--color-c', p.c);
+document.querySelectorAll('.palette-swatch').forEach((el, idx) => {
+el.classList.toggle('active', idx === i);
+});
+}
+const themeToggle = document.getElementById('themeToggle');
+themeToggle.addEventListener('click', () => {
+state.theme = state.theme === 'dark' ? 'light' : 'dark';
+document.body.setAttribute('data-theme', state.theme);
+themeToggle.textContent = state.theme === 'dark' ? '🌙' : '☀️';
+});
+function validateFile(file) {
+if (!file.type || !file.type.startsWith('image/')) {
+return 'Please choose an image file (JPG, PNG, WEBP).';
+}
+if (file.size > MAX_FILE_MB * 1024 * 1024) {
+return `That file is over ${MAX_FILE_MB}MB. Try a smaller image.`;
+}
+return null;
+}
+function setupSlot(slotId, inputId, key, label, optional) {
+const slot = document.getElementById(slotId);
+const input = document.getElementById(inputId);
+slot.addEventListener('click', (e) => {
+if (e.target.classList.contains('remove-btn')) return;
+input.click();
+});
+slot.addEventListener('keydown', (e) => {
+if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+});
+input.addEventListener('change', () => {
+const file = input.files[0];
+if (!file) return;
+handleFile(file, slot, key, label, optional);
+});
+['dragenter', 'dragover'].forEach(evt => {
+slot.addEventListener(evt, (e) => {
+e.preventDefault(); e.stopPropagation();
+slot.classList.add('drag-over');
+});
+});
+['dragleave', 'dragend'].forEach(evt => {
+slot.addEventListener(evt, (e) => {
+e.preventDefault(); e.stopPropagation();
+slot.classList.remove('drag-over');
+});
+});
+slot.addEventListener('drop', (e) => {
+e.preventDefault(); e.stopPropagation();
+slot.classList.remove('drag-over');
+const file = e.dataTransfer.files && e.dataTransfer.files[0];
+if (file) handleFile(file, slot, key, label, optional);
+});
+}
+function handleFile(file, slot, key, label, optional) {
+clearError();
+const err = validateFile(file);
+if (err) { showError(err); return; }
+const reader = new FileReader();
+reader.onload = (e) => {
+state[key] = { dataUrl: e.target.result, mediaType: file.type };
+renderSlot(slot, e.target.result, key, label, optional);
+checkReady();
+};
+reader.onerror = () => showError('Could not read that file. Try a different image.');
+reader.readAsDataURL(file);
+}
+function renderSlot(slot, dataUrl, key, label, optional) {
+slot.classList.add('filled');
+slot.innerHTML = `
+<span class="slot-label">${label}</span>
+<img src="${dataUrl}" alt="Thumbnail ${label}">
+<button class="remove-btn" type="button" aria-label="Remove thumbnail ${label}">✕</button>
+`;
+slot.querySelector('.remove-btn').addEventListener('click', (e) => {
+e.stopPropagation();
+clearSlot(slot, key, label, optional);
+});
+}
+function clearSlot(slot, key, label, optional) {
+state[key] = null;
+slot.classList.remove('filled');
+slot.innerHTML = `
+<span class="slot-label">${label}</span>
+${optional ? '<span class="slot-optional-tag">optional</span>' : ''}
+<span class="slot-empty-icon">📷</span>
+<span class="slot-empty-text">Add or drop thumbnail ${label}</span>
+`;
+const input = document.createElement('input');
+input.type = 'file';
+input.id = slot.id === 'slotA' ? 'inputA' : (slot.id === 'slotB' ? 'inputB' : 'inputC');
+input.accept = 'image/*';
+slot.appendChild(input);
+setupSlot(slot.id, input.id, key, label, optional);
+checkReady();
+}
+setupSlot('slotA', 'inputA', 'imgA', 'A', false);
+setupSlot('slotB', 'inputB', 'imgB', 'B', false);
+setupSlot('slotC', 'inputC', 'imgC', 'C', true);
+const analyzeBtn = document.getElementById('analyzeBtn');
+function checkReady() {
+analyzeBtn.disabled = !(state.imgA && state.imgB);
+}
+analyzeBtn.addEventListener('click', runAnalysis);
+function showError(msg) {
+document.getElementById('errorBox').innerHTML = `<div class="error-box">${msg}</div>`;
+}
+function clearError() {
+document.getElementById('errorBox').innerHTML = '';
+}
+function loadImage(dataUrl) {
+return new Promise((resolve, reject) => {
+const img = new Image();
+img.onload = () => resolve(img);
+img.onerror = () => reject(new Error('Could not load image for analysis.'));
+img.src = dataUrl;
+});
+}
+function analyzeImagePixels(img) {
+const w = 160, h = Math.round((img.height / img.width) * 160) || 90;
+const canvas = document.createElement('canvas');
+canvas.width = w; canvas.height = h;
+const ctx = canvas.getContext('2d');
+ctx.drawImage(img, 0, 0, w, h);
+const data = ctx.getImageData(0, 0, w, h).data;
+let sumLum = 0, sumLumSq = 0, sumSat = 0;
+const lumGrid = new Float32Array(w * h);
+const n = w * h;
+for (let i = 0; i < n; i++) {
+const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+lumGrid[i] = lum;
+sumLum += lum;
+sumLumSq += lum * lum;
+const max = Math.max(r, g, b), min = Math.min(r, g, b);
+const sat = max === 0 ? 0 : (max - min) / max;
+sumSat += sat;
+}
+const meanLum = sumLum / n;
+const variance = Math.max(0, (sumLumSq / n) - (meanLum * meanLum));
+const stdLum = Math.sqrt(variance);
+const meanSat = sumSat / n;
+let edgeSum = 0, edgeCount = 0;
+for (let y = 0; y < h; y++) {
+for (let x = 0; x < w - 1; x++) {
+const idx = y * w + x;
+edgeSum += Math.abs(lumGrid[idx] - lumGrid[idx + 1]);
+edgeCount++;
+}
+}
+for (let y = 0; y < h - 1; y++) {
+for (let x = 0; x < w; x++) {
+const idx = y * w + x;
+edgeSum += Math.abs(lumGrid[idx] - lumGrid[idx + w]);
+edgeCount++;
+}
+}
+const meanEdge = edgeSum / edgeCount;
+const brightness = Math.round(clamp((meanLum / 255) * 100, 0, 100));
+const contrast = Math.round(clamp((stdLum / 90) * 100, 0, 100));
+const colorfulness = Math.round(clamp(meanSat * 100 * 1.3, 0, 100));
+const complexity = Math.round(clamp((meanEdge / 40) * 100, 0, 100));
+return { brightness, contrast, colorfulness, complexity };
+}
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+function bellScore(value, target, spread) {
+const diff = Math.abs(value - target);
+return clamp(100 - (diff / spread) * 100, 0, 100);
+}
+function computeOverall(m) {
+const brightnessScore = bellScore(m.brightness, 62, 55);
+const complexityScore = bellScore(m.complexity, 42, 55);
+const overall = (m.contrast * 0.32) + (m.colorfulness * 0.28) + (brightnessScore * 0.18) + (complexityScore * 0.22);
+return Math.round(clamp(overall, 0, 100));
+}
+function suggestionFor(m, label) {
+const issues = [];
+if (m.contrast < 45) issues.push({ k: 'contrast', v: m.contrast });
+if (m.colorfulness < 35) issues.push({ k: 'colorfulness', v: m.colorfulness });
+if (m.brightness < 30) issues.push({ k: 'dark', v: m.brightness });
+if (m.brightness > 88) issues.push({ k: 'bright', v: m.brightness });
+if (m.complexity > 75) issues.push({ k: 'cluttered', v: m.complexity });
+if (m.complexity < 15) issues.push({ k: 'flat', v: m.complexity });
+if (issues.length === 0) {
+return "Solid balance of contrast, color, and detail — this one's in good shape.";
+}
+issues.sort((a, b) => (100 - a.v) - (100 - b.v));
+const top = issues[issues.length - 1] || issues[0];
+const messages = {
+contrast: "Push the contrast between your subject and background so it pops more in a crowded feed.",
+colorfulness: "The palette reads a bit muted — a bolder accent color would help it stand out.",
+dark: "This looks quite dark — brightening the subject would help visibility on small screens.",
+bright: "This is very bright/washed out — adding some shadow or contrast would give it more depth.",
+cluttered: "There's a lot of visual detail — simplifying to 1-2 focal points would read faster at thumbnail size.",
+flat: "This feels a little flat — a focal element, expression, or bold text would draw the eye more."
+};
+return messages[top.k];
+}
+async function runAnalysis() {
+clearError();
+if (!state.imgA || !state.imgB) { showError('Add at least thumbnail A and B before analyzing.'); return; }
+document.getElementById('resultsBox').innerHTML = '';
+document.getElementById('loadingBox').innerHTML = `
+<div class="loading">
+<div class="spinner"></div>
+<div>Judging the matchup…</div>
+</div>
+`;
+analyzeBtn.disabled = true;
+try {
+const hasC = !!state.imgC;
+const keys = hasC ? ['imgA', 'imgB', 'imgC'] : ['imgA', 'imgB'];
+const labels = hasC ? ['A', 'B', 'C'] : ['A', 'B'];
+const results = {};
+for (let i = 0; i < keys.length; i++) {
+const img = await loadImage(state[keys[i]].dataUrl);
+const m = analyzeImagePixels(img);
+m.overall = computeOverall(m);
+results[labels[i].toLowerCase()] = m;
+}
+let winnerLabel = labels[0];
+let bestScore = -1;
+labels.forEach(l => {
+const s = results[l.toLowerCase()].overall;
+if (s > bestScore) { bestScore = s; winnerLabel = l; }
+});
+const suggestions = {};
+labels.forEach(l => { suggestions['suggestion' + l] = suggestionFor(results[l.toLowerCase()], l); });
+const runnerUp = labels.filter(l => l !== winnerLabel).sort((a, b) => results[b.toLowerCase()].overall - results[a.toLowerCase()].overall)[0];
+const gap = bestScore - results[runnerUp.toLowerCase()].overall;
+const verdict = gap < 6
+? `Thumbnail ${winnerLabel} edges ahead, but it's close with ${runnerUp} — both could work well.`
+: `Thumbnail ${winnerLabel} wins with stronger contrast and color pop, making it more likely to stand out in a feed.`;
+const parsed = { winner: winnerLabel, verdict, ...suggestions };
+labels.forEach(l => { parsed[l.toLowerCase()] = results[l.toLowerCase()]; });
+state.lastResult = parsed;
+renderResults(parsed, hasC);
+} catch (err) {
+console.error(err);
+showError((err.message || 'Analysis failed') + '. Try again with a different image.');
+} finally {
+document.getElementById('loadingBox').innerHTML = '';
+analyzeBtn.disabled = false;
+}
+}
+function renderResults(r, hasC) {
+const entries = hasC
+? [{ l: 'A', img: state.imgA.dataUrl, d: r.a, sug: r.suggestionA }, { l: 'B', img: state.imgB.dataUrl, d: r.b, sug: r.suggestionB }, { l: 'C', img: state.imgC.dataUrl, d: r.c, sug: r.suggestionC }]
+: [{ l: 'A', img: state.imgA.dataUrl, d: r.a, sug: r.suggestionA }, { l: 'B', img: state.imgB.dataUrl, d: r.b, sug: r.suggestionB }];
+const metrics = [
+{ key: 'contrast', label: 'Contrast' },
+{ key: 'colorfulness', label: 'Colorfulness' },
+{ key: 'brightness', label: 'Brightness' },
+{ key: 'complexity', label: 'Visual complexity' }
+];
+const colorVarFor = (l) => l === 'A' ? '--color-a' : (l === 'B' ? '--color-b' : '--color-c');
+const versusCards = entries.map((e, i) => {
+const isWinner = r.winner === e.l;
+const card = `
+<div class="versus-card card-${e.l.toLowerCase()}">
+<div class="versus-thumb ${isWinner ? 'winner' : ''}">
+${isWinner ? '<span class="crown">👑</span>' : ''}
+<img src="${e.img}" alt="Thumbnail ${e.l}">
+</div>
+<div class="versus-score">${e.d.overall}</div>
+</div>
+`;
+return i < entries.length - 1 ? card + '<div class="versus-divider">VS</div>' : card;
+}).join('');
+const metricsHtml = metrics.map(m => `
+<div class="metric-row">
+<div class="metric-label">
+<span>${m.label}</span>
+<span class="metric-scores">
+${entries.map(e => `<span style="color:var(${colorVarFor(e.l)})">${e.d[m.key]}</span>`).join('<span style="color:var(--text-muted)">|</span>')}
+</span>
+</div>
+<div class="metric-bars">
+${entries.map(e => `<div class="metric-bar-track"><div class="metric-bar-fill fill-${e.l.toLowerCase()}" data-w="${e.d[m.key]}"></div></div>`).join('')}
+</div>
+</div>
+`).join('');
+const suggestionsHtml = entries.map(e => `
+<div class="suggestion-card ${e.l.toLowerCase()}"><b>${e.l} →</b> ${e.sug}</div>
+`).join('');
+document.getElementById('resultsBox').innerHTML = `
+<div class="results">
+<div id="reportCapture">
+<div class="versus-row">${versusCards}</div>
+<div class="verdict-box">
+<div class="verdict-title">Verdict</div>
+<div class="verdict-text">${r.verdict}</div>
+</div>
+<div class="metrics-section">
+<div class="metrics-title">Metric breakdown</div>
+${metricsHtml}
+</div>
+<div class="suggestions">
+${suggestionsHtml}
+</div>
+<div class="report-footer">Generated with ThumbClash · analyzed locally, no data left your device</div>
+</div>
+<div class="action-row">
+<button class="export-btn" id="exportBtn">Export report as image</button>
+<button class="reset-btn" id="resetBtn">Test another matchup</button>
+</div>
+</div>
+`;
+requestAnimationFrame(() => {
+document.querySelectorAll('.metric-bar-fill').forEach(el => {
+el.style.width = el.getAttribute('data-w') + '%';
+});
+});
+document.getElementById('resetBtn').addEventListener('click', () => {
+location.reload();
+});
+document.getElementById('exportBtn').addEventListener('click', exportReport);
+}
+async function exportReport() {
+const exportBtn = document.getElementById('exportBtn');
+if (typeof html2canvas === 'undefined') {
+showError('Export tool failed to load. Check your connection and try again.');
+return;
+}
+const original = exportBtn.textContent;
+exportBtn.textContent = 'Generating…';
+exportBtn.disabled = true;
+try {
+const target = document.getElementById('reportCapture');
+const bgColor = state.theme === 'dark' ? '#14141c' : '#f5f5f8';
+const canvas = await html2canvas(target, {
+backgroundColor: bgColor,
+scale: 2,
+useCORS: true
+});
+const link = document.createElement('a');
+link.download = 'thumbclash-report.png';
+link.href = canvas.toDataURL('image/png');
+document.body.appendChild(link);
+link.click();
+link.remove();
+} catch (err) {
+console.error(err);
+showError('Export failed: ' + err.message);
+} finally {
+exportBtn.textContent = original;
+exportBtn.disabled = false;
+}
+}
+</script>
+</body>
+</html>
